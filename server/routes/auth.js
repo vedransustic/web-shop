@@ -1,12 +1,13 @@
 const router = require("express").Router()
 const User = require("../models/User")
-const Cryptojs = require("crypto-js")
+const CryptoJS = require("crypto-js")
+const jwt = require("jsonwebtoken")
 
 router.post("/register", async (req, res) => {
     const newUser = new User({
         username: req.body.username,
         email: req.body.email,
-        password: Cryptojs.AES.encrypt(req.body.password, process.env.PASS_SECRET).toString()
+        password: CryptoJS.AES.encrypt(req.body.password, process.env.PASS_SECRET).toString()
     });
 
     try{
@@ -18,8 +19,28 @@ router.post("/register", async (req, res) => {
     }
 })
 
-router.get("/login", async (req, res) => {
+router.post("/login", async (req, res) => {
+    try{
+        const user = await User.findOne({ username: req.body.username })
+        !user && res.status(401).json("Wrong credentials. Try again.")
+        const hashedPassword = CryptoJS.AES.decrypt(user.password, process.env.PASS_SECRET)
+        const userPassword = hashedPassword.toString(CryptoJS.enc.Utf8)
+        userPassword !== req.body.password && res.status(401).json("Wrong password. Try again.")
 
+        const accessToken = jwt.sign({
+            id: user._id,
+            isAdmin: user.isAdmin,
+        },
+            process.env.JWT_SECRET,
+            {expiresIn: "3d"})
+
+        const {password, ...other} = user._doc
+
+        res.status(200).json({...other, accessToken})
+
+    }catch(e){
+        res.status(500).json(e)
+    }
 })
 
 module.exports = router
